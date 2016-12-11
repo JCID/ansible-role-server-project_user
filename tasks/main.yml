@@ -1,0 +1,60 @@
+---
+- name:             "{{ project_user }}: Aanmaken user"
+  user:             name={{ project_user }}
+                    password="{{ lookup('password', '~/jcid/repositories/webserver/ansible/files/credentials/' + inventory_hostname + '/user/' + project_user + ' length=30 chars=ascii_letters encrypt=sha256_crypt') }}"
+  when:             project_user_uid is undefined
+
+- name:             "{{ project_user }}: Aanmaken user"
+  user:             name={{ project_user }}
+                    password="{{ lookup('password', '~/jcid/repositories/webserver/ansible/files/credentials/' + inventory_hostname + '/user/' + project_user + ' length=30 chars=ascii_letters encrypt=sha256_crypt') }}"
+                    uid="{{ project_user_uid }}"
+  when:             project_user_uid is defined
+
+- name:             "{{ project_user }}: jcid toevoegen aan known_hosts file"
+  lineinfile:       dest=/home/{{ project_user }}/.ssh/known_hosts
+                    regexp=^{{ item.host }}
+                    line="{{ item.line }}"
+                    create=yes
+                    owner={{ project_user }}
+                    group={{ project_user }}
+                    mode=600
+  with_items:
+   - host:          vcs.jcid.nl
+     line:          "{{ lookup('file', './known_hosts') }}"
+
+- name:             "{{ project_user }}: Zorgen dat Nginx recht heeft op de group"
+  user:             name=nginx
+                    groups={{ project_user }}
+                    append=yes
+
+- name:             "{{ project_user }}: Zorgen dat de standaard mappen aanwezig zijn"
+  file:             path=/home/{{ project_user }}/{{ item }}
+                    state=directory
+  with_items:
+   - domains/
+   - logs/
+   - tmp/
+
+- name:             "{{ project_user }}: Zorgen dat rechten worden hersteld"
+  file:             path=/home/{{ project_user }}/
+                    owner={{ project_user }}
+                    group={{ project_user }}
+                    recurse=true
+  changed_when:     false
+
+- name:             "{{ project_user }}: Hoofd folder user extra recht geven voor nginx (niet recursive)"
+  file:             path=/home/{{ project_user }}/
+                    mode=710
+
+- name:             "{{ project_user }}: Zorgen dat we direct in de juiste map zitten"
+  lineinfile:       dest=/home/{{ project_user }}/.bash_profile
+                    line="cd /home/{{ project_user }}/domains/{{ project_domain }}/"
+                    create=yes
+
+- name:             Gebruiker recht geven om via ssh in te loggen
+  lineinfile:       dest=/etc/ssh/sshd_config
+                    line="AllowUsers {{ project_user }}"
+  when:             "inventory_hostname == 'yorcom.prod.jcid.nl'"
+  notify:
+   - Restart SSH RedHat
+   - Restart SSH Debian
